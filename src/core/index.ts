@@ -20,8 +20,14 @@ export {
 } from "./game/state";
 export type { GameState, Group } from "./game/state";
 export { groupOf, mergeGroups } from "./game/groups";
-export { applyDrop, neighborPieces, snapThreshold, SNAP_FRACTION } from "./game/snap";
-export type { DropResult } from "./game/snap";
+export {
+  applyDrop,
+  findSnapCandidate,
+  neighborPieces,
+  snapThreshold,
+  SNAP_FRACTION,
+} from "./game/snap";
+export type { DropResult, SnapCandidate } from "./game/snap";
 export { scatterPositions } from "./game/scatter";
 export type { ScatterOptions } from "./game/scatter";
 export { isComplete, progress, groupCount } from "./game/complete";
