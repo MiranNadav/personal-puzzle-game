@@ -37,6 +37,9 @@ export interface GameStore {
   edgesOnly: boolean;
   ghost: boolean;
 
+  // Presentation-only: light scene backdrop vs dark. No gameplay effect.
+  lightTheme: boolean;
+
   // Bumped on structural change (merge/reset) so meshes re-mount cleanly.
   epoch: number;
 
@@ -45,6 +48,7 @@ export interface GameStore {
   spreadOut(): void;
   toggleEdgesOnly(): void;
   toggleGhost(): void;
+  toggleTheme(): void;
   reset(seed: number): void;
 }
 
@@ -70,6 +74,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   completedAt: null,
   edgesOnly: false,
   ghost: false,
+  lightTheme: false,
   epoch: 0,
 
   init(imgW, imgH, targetCount, seed) {
@@ -127,6 +132,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   toggleGhost() {
     set((s) => ({ ghost: !s.ghost }));
+  },
+  toggleTheme() {
+    set((s) => ({ lightTheme: !s.lightTheme }));
   },
 
   reset(seed) {

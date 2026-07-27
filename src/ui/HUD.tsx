@@ -2,12 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
-
-const TIERS: { label: string; count: number }[] = [
-  { label: "Small", count: 24 },
-  { label: "Medium", count: 100 },
-  { label: "Large", count: 300 },
-];
+import { TIERS } from "./DifficultyPicker";
 
 function fmt(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -19,10 +14,12 @@ export function HUD({
   targetCount,
   onDifficulty,
   onPlayAgain,
+  onNewImage,
 }: {
   targetCount: number;
   onDifficulty: (count: number) => void;
   onPlayAgain: () => void;
+  onNewImage: () => void;
 }) {
   const progress = useGameStore((s) => s.progress);
   const moves = useGameStore((s) => s.moves);
@@ -32,8 +29,10 @@ export function HUD({
   const epoch = useGameStore((s) => s.epoch);
   const spec = useGameStore((s) => s.spec);
   const spreadOut = useGameStore((s) => s.spreadOut);
+  const lightTheme = useGameStore((s) => s.lightTheme);
   const toggleEdgesOnly = useGameStore((s) => s.toggleEdgesOnly);
   const toggleGhost = useGameStore((s) => s.toggleGhost);
+  const toggleTheme = useGameStore((s) => s.toggleTheme);
 
   const pieceCount = spec ? spec.rows * spec.cols : 0;
 
@@ -76,19 +75,27 @@ export function HUD({
         </div>
       </div>
 
-      {/* Top-right difficulty (drives the M0 perf gate) */}
-      <div className="absolute right-4 top-4 flex gap-1 rounded-lg bg-black/50 p-1 backdrop-blur">
-        {TIERS.map((t) => (
-          <button
-            key={t.count}
-            onClick={() => onDifficulty(t.count)}
-            className={`rounded px-3 py-1.5 text-xs font-medium text-white transition ${
-              targetCount === t.count ? "bg-emerald-500" : "hover:bg-white/10"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Top-right: difficulty (drives the M0 perf gate) + new image */}
+      <div className="absolute right-4 top-4 flex items-center gap-2">
+        <div className="flex gap-1 rounded-lg bg-black/50 p-1 backdrop-blur">
+          {TIERS.map((t) => (
+            <button
+              key={t.count}
+              onClick={() => onDifficulty(t.count)}
+              className={`rounded px-3 py-1.5 text-xs font-medium text-white transition ${
+                targetCount === t.count ? "bg-emerald-500" : "hover:bg-white/10"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onNewImage}
+          className="rounded-lg bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur transition hover:bg-white/10"
+        >
+          New image
+        </button>
       </div>
 
       {/* Bottom findability toolbar (plan Q13) */}
@@ -115,6 +122,14 @@ export function HUD({
         >
           Ghost
         </button>
+        <button
+          onClick={toggleTheme}
+          className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
+            lightTheme ? "bg-emerald-500" : "bg-white/10 hover:bg-white/20"
+          }`}
+        >
+          {lightTheme ? "Light" : "Dark"}
+        </button>
       </div>
 
       {/* Completion panel (plan Q18) */}
@@ -125,12 +140,20 @@ export function HUD({
             <p className="text-sm opacity-80">
               {fmt(display)} · {moves} moves · {pieceCount} pieces
             </p>
-            <button
-              onClick={onPlayAgain}
-              className="mt-2 rounded-lg bg-emerald-500 px-6 py-2.5 font-medium hover:bg-emerald-400"
-            >
-              Play again
-            </button>
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={onNewImage}
+                className="rounded-lg bg-white/10 px-6 py-2.5 font-medium hover:bg-white/20"
+              >
+                New image
+              </button>
+              <button
+                onClick={onPlayAgain}
+                className="rounded-lg bg-emerald-500 px-6 py-2.5 font-medium hover:bg-emerald-400"
+              >
+                Play again
+              </button>
+            </div>
           </div>
         </div>
       )}

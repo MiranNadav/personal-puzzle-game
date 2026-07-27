@@ -44,15 +44,25 @@ export function PieceField({
   const puzzleH = spec.rows * spec.cellH;
   const unit = Math.min(spec.cellW, spec.cellH);
 
-  const material = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        map: texture,
-        roughness: 0.82,
-        metalness: 0.02,
-      }),
-    [texture],
-  );
+  // ExtrudeGeometry emits two material groups: index 0 = the top/bottom caps
+  // (image faces), index 1 = the extruded side walls + bevel. Giving the sides a
+  // fixed light material paints a bright physical rim on every piece, so a dark
+  // image tile stays visible against the dark table (it no longer relies on the
+  // image having any edge contrast of its own).
+  const material = useMemo(() => {
+    const top = new THREE.MeshStandardMaterial({
+      map: texture,
+      roughness: 0.82,
+      metalness: 0.02,
+    });
+    const side = new THREE.MeshStandardMaterial({
+      color: "#e8e8ea",
+      emissive: "#3a3a3d", // small self-lit floor so the rim reads even in shadow
+      roughness: 0.6,
+      metalness: 0.0,
+    });
+    return [top, side];
+  }, [texture]);
 
   // Static geometry per piece — a pure function of (seed, rows, cols), rebuilt
   // only when a new puzzle loads.
@@ -79,7 +89,7 @@ export function PieceField({
   useEffect(() => {
     return () => {
       geometries.forEach((g) => g.dispose());
-      material.dispose();
+      material.forEach((m) => m.dispose());
     };
   }, [geometries, material]);
 
