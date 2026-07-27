@@ -2,13 +2,74 @@
 
 import * as THREE from "three";
 
+/** A decoded, GPU-ready image plus its pixel dimensions (post-downscale). */
+export interface LoadedTexture {
+  texture: THREE.CanvasTexture;
+  width: number;
+  height: number;
+}
+
 /**
- * M0 uses a hardcoded, procedurally-drawn "photo" instead of an upload: a
- * colourful gradient with big shapes and a faint coordinate grid. The grid +
- * hue gradient make it obvious when two pieces truly line up, which is exactly
- * what the M0 gate ("does the click-together feel right") needs to judge.
+ * Longest edge a puzzle texture is downscaled to. Caps GPU texture memory so
+ * 300-piece scenes stay inside the M0 perf envelope, and bounds the cost of the
+ * client-side decode. (M2 will re-encode server-side with sharp; M1 is
+ * client-only, so this is the only guard.)
+ */
+const MAX_DIM = 2048;
+
+/** Cap the load path so a monster upload can't hang the decode. */
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Decode an uploaded image to a texture, applying EXIF orientation and
+ * downscaling to `MAX_DIM`. Entirely client-side (plan M1: upload via the
+ * browser, no server).
  *
- * Real uploads arrive in M1; this keeps the spike backend-free.
+ * `createImageBitmap(..., { imageOrientation: "from-image" })` bakes the EXIF
+ * orientation into the pixels, so a phone photo shot in portrait isn't sideways
+ * and the stored EXIF (incl. GPS) never reaches the canvas. Throws if the bytes
+ * aren't a decodable image (e.g. HEIC in browsers that can't decode it) — the
+ * caller turns that into a user-facing message.
+ */
+export async function loadImageFile(file: File): Promise<LoadedTexture> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  try {
+    const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+
+    return { texture: canvasToTexture(canvas), width: w, height: h };
+  } finally {
+    bitmap.close();
+  }
+}
+
+/** Wrap the procedural demo image as a `LoadedTexture` for the "try a sample" path. */
+export function makeSampleImage(): LoadedTexture {
+  const texture = makeDemoTexture(2048, 1.5);
+  const canvas = texture.image as HTMLCanvasElement;
+  return { texture, width: canvas.width, height: canvas.height };
+}
+
+function canvasToTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * A hardcoded, procedurally-drawn "photo": a colourful gradient with big shapes
+ * and a faint coordinate grid. The grid + hue gradient make it obvious when two
+ * pieces truly line up. Served as the "try a sample" option so the game is
+ * playable without an upload.
  */
 export function makeDemoTexture(size = 2048, aspect = 1.5): THREE.CanvasTexture {
   const w = Math.round(size);

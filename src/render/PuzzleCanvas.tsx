@@ -8,9 +8,6 @@ import { useGameStore } from "@/store/gameStore";
 import { Lighting } from "./lighting";
 import { CameraRig } from "./CameraRig";
 import { PieceField } from "./PieceField";
-import { makeDemoTexture } from "./textures";
-
-const DEMO_ASPECT = 1.5;
 
 /** Faint full-image hint under the assembly area (plan Q13 ghost toggle). */
 function GhostPlane({ texture, w, h }: { texture: THREE.Texture; w: number; h: number }) {
@@ -33,22 +30,36 @@ function GhostPlane({ texture, w, h }: { texture: THREE.Texture; w: number; h: n
   );
 }
 
-export function PuzzleCanvas({ targetCount, seed }: { targetCount: number; seed: number }) {
+/**
+ * Owns the R3F scene. The image `texture` (and its lifecycle) is owned by the
+ * caller — the canvas may unmount and remount across setup/play without
+ * disposing it, so it must not dispose it here.
+ */
+export function PuzzleCanvas({
+  texture,
+  imgW,
+  imgH,
+  targetCount,
+  seed,
+}: {
+  texture: THREE.Texture;
+  imgW: number;
+  imgH: number;
+  targetCount: number;
+  seed: number;
+}) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  const texture = useMemo(() => makeDemoTexture(2048, DEMO_ASPECT), []);
 
   const init = useGameStore((s) => s.init);
   const spec = useGameStore((s) => s.spec);
   const edges = useGameStore((s) => s.edges);
   const epoch = useGameStore((s) => s.epoch);
   const ghost = useGameStore((s) => s.ghost);
+  const lightTheme = useGameStore((s) => s.lightTheme);
 
   useEffect(() => {
-    const img = texture.image as HTMLCanvasElement;
-    init(img.width, img.height, targetCount, seed);
-  }, [init, texture, targetCount, seed]);
-
-  useEffect(() => () => texture.dispose(), [texture]);
+    init(imgW, imgH, targetCount, seed);
+  }, [init, imgW, imgH, targetCount, seed]);
 
   if (!spec || !edges) {
     return <div className="grid h-full w-full place-items-center text-sm opacity-60">Loading…</div>;
@@ -67,14 +78,14 @@ export function PuzzleCanvas({ targetCount, seed }: { targetCount: number; seed:
       gl={{ antialias: true }}
       camera={{ fov: 45, near: 0.1, far: span * 6, position: [cx, span * 0.5, cz + span * 0.5] }}
     >
-      <color attach="background" args={["#1b1d21"]} />
+      <color attach="background" args={[lightTheme ? "#eef1f5" : "#1b1d21"]} />
       <Lighting span={span} />
       <CameraRig target={[cx, 0, cz]} span={span} ref={controlsRef} />
 
       {/* Table surface — receives shadows and is the pan/raycast plane. */}
       <mesh rotation-x={-Math.PI / 2} position={[cx, 0, cz]} receiveShadow>
         <planeGeometry args={[span * 3, span * 3]} />
-        <meshStandardMaterial color="#2a2d33" roughness={1} metalness={0} />
+        <meshStandardMaterial color={lightTheme ? "#d6d9df" : "#2a2d33"} roughness={1} metalness={0} />
       </mesh>
 
       {ghost && <GhostPlane texture={texture} w={puzzleW} h={puzzleH} />}
