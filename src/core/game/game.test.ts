@@ -8,7 +8,7 @@ import {
   type GameState,
 } from "./state";
 import { mergeGroups, groupOf } from "./groups";
-import { applyDrop, snapThreshold, neighborPieces } from "./snap";
+import { applyDrop, findSnapCandidate, snapThreshold, neighborPieces, SNAP_FRACTION } from "./snap";
 import { isComplete, progress, groupCount } from "./complete";
 import { scatterPositions } from "./scatter";
 import { serialize, deserialize } from "./serialize";
@@ -62,7 +62,7 @@ describe("snap on drop", () => {
     const s = freshSolved();
     const g0 = groupOf(s, 0);
     // Others remain at origin 0 (aligned); nudge piece 0 within threshold.
-    s.groups.get(g0)!.origin = { x: 1, y: -1 }; // |.| < 2 = 0.2*10
+    s.groups.get(g0)!.origin = { x: 1, y: -1 }; // |.| ~1.41 < 3.5 = 0.35*10
     const res = applyDrop(s, g0, snapThreshold(s));
     expect(res.merged).toBe(true);
     // Cascade pulls the whole aligned cluster together.
@@ -97,6 +97,64 @@ describe("snap on drop", () => {
     expect(groupOf(s, 0)).toBe(groupOf(s, 1));
     expect(groupCount(s)).toBe(3); // 0+1 joined, 2 and 3 still loose
     expect(isComplete(s)).toBe(false);
+  });
+});
+
+describe("snap tolerance", () => {
+  it("stays under half a cell so a drop can't snap to the wrong alignment", () => {
+    // Neighbour-correct origins are exactly one cell apart; at >= 0.5 a drop
+    // could be closer to a wrong alignment than the right one.
+    expect(SNAP_FRACTION).toBeLessThan(0.5);
+    expect(snapThreshold(freshSolved())).toBeCloseTo(SPEC.cellW * SNAP_FRACTION);
+  });
+
+  it("accepts a drop that misses by nearly a third of a piece", () => {
+    const s = freshSolved();
+    const g0 = groupOf(s, 0);
+    s.groups.get(g0)!.origin = { x: 3, y: 0 }; // 30% of a cell out
+    expect(applyDrop(s, g0, snapThreshold(s)).merged).toBe(true);
+  });
+});
+
+describe("findSnapCandidate", () => {
+  it("returns null when no neighbour is in range", () => {
+    const s = freshSolved();
+    s.groups.get(groupOf(s, 0))!.origin = { x: 100, y: 100 };
+    expect(findSnapCandidate(s, groupOf(s, 0), snapThreshold(s))).toBeNull();
+  });
+
+  it("reports the landing origin without touching state", () => {
+    const s = freshSolved();
+    const g0 = groupOf(s, 0);
+    s.groups.get(g0)!.origin = { x: 2, y: 1 };
+    const c = findSnapCandidate(s, g0, snapThreshold(s));
+    expect(c).not.toBeNull();
+    expect(c!.origin).toEqual({ x: 0, y: 0 }); // the stationary neighbour's origin
+    expect(c!.distance).toBeCloseTo(Math.hypot(2, 1));
+    // Preview only: nothing moved, nothing merged.
+    expect(s.groups.get(g0)!.origin).toEqual({ x: 2, y: 1 });
+    expect(groupCount(s)).toBe(4);
+  });
+
+  it("picks the nearest candidate when several are in range", () => {
+    const s = freshSolved();
+    const g0 = groupOf(s, 0);
+    const g1 = groupOf(s, 1);
+    const g2 = groupOf(s, 2);
+    s.groups.get(g1)!.origin = { x: 0.5, y: 0 };
+    s.groups.get(g2)!.origin = { x: 2, y: 0 };
+    const c = findSnapCandidate(s, g0, snapThreshold(s));
+    expect(c!.targetGroupId).toBe(g1);
+    expect(c!.origin).toEqual({ x: 0.5, y: 0 });
+  });
+
+  it("agrees with the drop it previews", () => {
+    const s = freshSolved();
+    const g0 = groupOf(s, 0);
+    s.groups.get(g0)!.origin = { x: 1.5, y: -2 };
+    const c = findSnapCandidate(s, g0, snapThreshold(s))!;
+    applyDrop(s, g0, snapThreshold(s));
+    expect(s.groups.get(g0)!.origin).toEqual(c.origin);
   });
 });
 

@@ -1,9 +1,18 @@
+import type { Vec2 } from "../types";
 import type { GameState } from "./state";
 import { pieceRow, pieceCol, pieceIndex } from "./state";
 import { mergeGroups } from "./groups";
 
-/** Snap tolerance as a fraction of the smaller cell dimension (plan Q7). */
-export const SNAP_FRACTION = 0.2;
+/**
+ * Snap tolerance as a fraction of the smaller cell dimension (plan Q7).
+ *
+ * Must stay below 0.5: neighbour-correct origins are exactly one cell apart, so
+ * at 0.5 a piece equidistant from two candidate alignments could snap to the
+ * wrong one. 0.35 is as forgiving as the grid safely allows — the plan's 0.2 was
+ * a guess that in practice demanded near-pixel accuracy, and the live snap
+ * preview (render layer) now shows the player when they're inside the window.
+ */
+export const SNAP_FRACTION = 0.35;
 
 export function snapThreshold(state: GameState): number {
   return Math.min(state.cellW, state.cellH) * SNAP_FRACTION;
@@ -31,21 +40,35 @@ export interface DropResult {
   groupId: number;
 }
 
-/**
- * Resolve a drop of `draggedGroupId`. Two grid-neighbour pieces belong together
- * exactly when their groups share the same solved `origin` — so misalignment is
- * `|dragged.origin - neighbour.origin|`. If any neighbour group is within the
- * snap threshold, snap the dragged group onto the nearest one, then absorb every
- * neighbour group that lands within threshold (cascading through the cluster).
- *
- * The dragged group survives (keeps its id); absorbed pieces reposition to the
- * snapped origin automatically because position = origin + fixed offset.
- */
-export function applyDrop(state: GameState, draggedGroupId: number, threshold: number): DropResult {
-  const g = state.groups.get(draggedGroupId);
-  if (!g) throw new Error(`applyDrop: missing group ${draggedGroupId}`);
+/** Where a group would land if released right now, and what it would join. */
+export interface SnapCandidate {
+  /** The stationary neighbour group that would be joined. */
+  targetGroupId: number;
+  /** Origin the dragged group snaps to (the target group's origin). */
+  origin: Vec2;
+  /** Current misalignment, in world units. 0 = perfectly aligned. */
+  distance: number;
+}
 
-  // Nearest neighbour group within threshold of the current (dropped) origin.
+/**
+ * The join a group would make if released at its current origin, or null if
+ * nothing is in range. Two grid-neighbour pieces belong together exactly when
+ * their groups share the same solved `origin`, so misalignment is
+ * `|dragged.origin - neighbour.origin|` and the nearest neighbour within
+ * `threshold` wins.
+ *
+ * Pure and side-effect free: the drag loop calls this every frame to preview the
+ * landing spot, and `applyDrop` calls it to resolve the actual drop. Both must
+ * agree, which is why they share one implementation rather than two that drift.
+ */
+export function findSnapCandidate(
+  state: GameState,
+  draggedGroupId: number,
+  threshold: number,
+): SnapCandidate | null {
+  const g = state.groups.get(draggedGroupId);
+  if (!g) return null;
+
   let bestId = -1;
   let bestD = Infinity;
   for (const p of g.pieces) {
@@ -60,11 +83,33 @@ export function applyDrop(state: GameState, draggedGroupId: number, threshold: n
       }
     }
   }
-  if (bestId < 0) return { merged: false, groupId: draggedGroupId };
+  if (bestId < 0) return null;
+
+  const target = state.groups.get(bestId)!;
+  return {
+    targetGroupId: bestId,
+    origin: { x: target.origin.x, y: target.origin.y },
+    distance: bestD,
+  };
+}
+
+/**
+ * Resolve a drop of `draggedGroupId`. If a neighbour group is within the snap
+ * threshold, snap the dragged group onto the nearest one, then absorb every
+ * neighbour group that lands within threshold (cascading through the cluster).
+ *
+ * The dragged group survives (keeps its id); absorbed pieces reposition to the
+ * snapped origin automatically because position = origin + fixed offset.
+ */
+export function applyDrop(state: GameState, draggedGroupId: number, threshold: number): DropResult {
+  const g = state.groups.get(draggedGroupId);
+  if (!g) throw new Error(`applyDrop: missing group ${draggedGroupId}`);
+
+  const candidate = findSnapCandidate(state, draggedGroupId, threshold);
+  if (!candidate) return { merged: false, groupId: draggedGroupId };
 
   // Snap onto the stationary neighbour, then cascade-merge the whole cluster.
-  const target = state.groups.get(bestId)!;
-  g.origin = { x: target.origin.x, y: target.origin.y };
+  g.origin = { x: candidate.origin.x, y: candidate.origin.y };
 
   let changed = true;
   while (changed) {
